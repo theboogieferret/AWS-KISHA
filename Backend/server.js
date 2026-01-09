@@ -205,12 +205,22 @@ app.get('/room-status', async (req, res) => {
 
 // הפעלת השרת
 async function startServer() {
-    activeRooms = await loadGameData(); // טעינה ראשונית
-    
-    const PORT = process.env.PORT || 80; 
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server running on port ${PORT}`);
-    });
+    try {
+        // 1. יצירת ה-Provider עבור Instance Principals
+        const provider = await new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
+
+        // 2. יצירת ה-Client - שים לב לשינוי בפרמטר כאן!
+        const client = new os.ObjectStorageClient({ 
+            authenticationDetailsProvider: provider 
+        });
+
+        console.log("OCI Client initialized successfully with Instance Principals");
+        
+        // כאן יבוא שאר הקוד של ה-Express (app.listen וכו')
+        
+    } catch (error) {
+        console.error("Failed to initialize OCI Client:", error);
+    }
 }
 
 startServer();
