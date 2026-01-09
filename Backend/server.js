@@ -11,21 +11,15 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// וודא שתיקיית ה-Frontend נמצאת בשורש הפרויקט ב-Git
+// הגדרת סטטיק - וודא שתיקיית ה-Frontend קיימת בתוך Backend או בנתיב הנכון
 app.use(express.static(path.join(__dirname, 'Frontend')));
 
-// הגדרת OCI Object Storage
-// התיקון כאן: הגישה ל-Provider צריכה להיות דרך common
-const provider = new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
-
-// כעת ניתן להשתמש ב-provider כדי ליצור את ה-client
-const client = new os.ObjectStorageClient({ authenticationDetailsProvider: provider });
-
 const bucketName = "frontend-bucket-game"; 
-const namespaceName = "axlbzs2kkeq0"; // חובה להחליף ב-Namespace שלך מה-OCI Console
+const namespaceName = "axlbzs2kkeq0"; 
 const objectName = "gameData.json";
 
-// משתנה גלובלי לחדרים
+// משתנים גלובליים שיאותחלו בתוך startServer
+let client; 
 let activeRooms = {}; 
 
 // --- פונקציות עזר לענן ---
@@ -98,7 +92,7 @@ app.get('/health', (req, res) => {
 });
 
 app.post('/create-room', async (req, res) => {
-    activeRooms = await loadGameData(); // סנכרון מהענן
+    activeRooms = await loadGameData();
     const { roomName, creatorName } = req.body;
     const roomCode = generateRoomCode();
     
@@ -112,13 +106,12 @@ app.post('/create-room', async (req, res) => {
         lastActive: new Date()
     };
     
-    await saveGameData(activeRooms); // שמירה לענן
-    console.log(`Room created: ${roomCode} by ${creatorName}`);
+    await saveGameData(activeRooms);
     res.json({ success: true, roomCode: roomCode });
 });
 
 app.post('/join-room', async (req, res) => {
-    activeRooms = await loadGameData(); // סנכרון מהענן
+    activeRooms = await loadGameData();
     const { roomCode, playerName } = req.body;
 
     if (activeRooms[roomCode]) {
@@ -140,27 +133,10 @@ app.post('/start-game', async (req, res) => {
         activeRooms[roomCode].board = Array(9).fill(null);
         activeRooms[roomCode].winner = null;
         activeRooms[roomCode].turnIndex = 0;
-        
         await saveGameData(activeRooms);
         res.json({ success: true });
     } else {
         res.json({ success: false });
-    }
-});
-
-app.post('/reset-game', async (req, res) => {
-    activeRooms = await loadGameData();
-    const { roomCode } = req.body;
-    if (activeRooms[roomCode]) {
-        activeRooms[roomCode].gameActive = true;
-        activeRooms[roomCode].board = Array(9).fill(null);
-        activeRooms[roomCode].winner = null;
-        activeRooms[roomCode].turnIndex = 0;
-        
-        await saveGameData(activeRooms);
-        res.json({ success: true });
-    } else {
-        res.json({ success: false, message: "Room not found" });
     }
 });
 
@@ -174,7 +150,6 @@ app.post('/make-move', async (req, res) => {
             room.board[index] = playerIndex === 0 ? 'X' : 'O';
             room.turnIndex = (room.turnIndex === 0) ? 1 : 0;
             checkWinner(room);
-            
             await saveGameData(activeRooms);
             res.json({ success: true });
         } else {
@@ -186,9 +161,8 @@ app.post('/make-move', async (req, res) => {
 });
 
 app.get('/room-status', async (req, res) => {
-    activeRooms = await loadGameData(); // תמיד להביא מצב עדכני לשחקן
+    activeRooms = await loadGameData();
     const roomCode = req.query.code;
-
     if (activeRooms[roomCode]) {
         res.json({ 
             success: true, 
@@ -203,23 +177,30 @@ app.get('/room-status', async (req, res) => {
     }
 });
 
-// הפעלת השרת
+// --- הפעלת השרת ---
+
 async function startServer() {
     try {
-        // 1. יצירת ה-Provider עבור Instance Principals
+        console.log("Connecting to OCI Object Storage...");
+        
+        // יצירת ה-Provider בצורה אסינכרונית
         const provider = await new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
 
-        // 2. יצירת ה-Client - שים לב לשינוי בפרמטר כאן!
-        const client = new os.ObjectStorageClient({ 
+        // אתחול ה-Client הגלובלי
+        client = new os.ObjectStorageClient({ 
             authenticationDetailsProvider: provider 
         });
 
-        console.log("OCI Client initialized successfully with Instance Principals");
-        
-        // כאן יבוא שאר הקוד של ה-Express (app.listen וכו')
-        
+        console.log("✅ OCI Client initialized successfully");
+
+        const PORT = 80;
+        app.listen(PORT, () => {
+            console.log(`🚀 Server running at http://localhost:${PORT}`);
+        });
+
     } catch (error) {
-        console.error("Failed to initialize OCI Client:", error);
+        console.error("❌ Failed to initialize OCI Client:", error);
+        process.exit(1); // סגירת השרת אם אין חיבור לענן
     }
 }
 
