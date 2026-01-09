@@ -1,41 +1,63 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const fs = require('fs'); // 1. הוספנו את מודול הקבצים
+const fs = require('fs');
+
+const os = require('oci-objectstorage');
+const common = require('oci-common');
 
 const app = express(); 
 
 app.use(express.json());
 app.use(cors());
-app.use(express.static(path.join(__dirname, '../Frontend')));
 
-// שם הקובץ לשמירה
-const DATA_FILE = 'gameData.json';
+// וודא שתיקיית ה-Frontend נמצאת בשורש הפרויקט ב-Git
+app.use(express.static(path.join(__dirname, 'Frontend')));
 
-// 2. פונקציה לטעינת נתונים בהפעלת השרת
-function loadGameData() {
+// הגדרת OCI Object Storage
+const provider = new common.InstancePrincipalsAuthenticationDetailsProvider();
+const client = new os.ObjectStorageClient({ authenticationDetailsProvider: provider });
+
+const bucketName = "frontend-bucket-game"; 
+const namespaceName = "YOUR_NAMESPACE"; // חובה להחליף ב-Namespace שלך מה-OCI Console
+const objectName = "gameData.json";
+
+// משתנה גלובלי לחדרים
+let activeRooms = {}; 
+
+// --- פונקציות עזר לענן ---
+
+async function loadGameData() {
     try {
-        if (fs.existsSync(DATA_FILE)) {
-            const data = fs.readFileSync(DATA_FILE, 'utf8');
-            console.log('✅ נתונים נטענו מקובץ הגיבוי בהצלחה!');
-            return JSON.parse(data);
+        const getObjectRequest = {
+            objectName: objectName,
+            bucketName: bucketName,
+            namespaceName: namespaceName
+        };
+        const response = await client.getObject(getObjectRequest);
+        const chunks = [];
+        for await (let chunk of response.value) {
+            chunks.push(chunk);
         }
+        return JSON.parse(Buffer.concat(chunks).toString());
     } catch (error) {
-        console.error('שגיאה בטעינת הנתונים:', error);
+        console.log("קובץ לא נמצא או שגיאה בטעינה, מחזיר אובייקט ריק");
+        return {};
     }
-    return {}; // אם אין קובץ, מתחילים ריק
 }
 
-// המשתנה מקבל את הנתונים מהקובץ (אם יש)
-const activeRooms = loadGameData(); 
-
-// 3. פונקציה לשמירת המצב הנוכחי (נקרא לה אחרי כל שינוי)
-function saveGameData() {
+async function saveGameData(dataToSave) {
     try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(activeRooms, null, 2));
-        // console.log('Game data saved'); // אפשר להוריד הערה אם רוצים לראות בטרמינל
+        const putObjectRequest = {
+            namespaceName: namespaceName,
+            bucketName: bucketName,
+            objectName: objectName,
+            putObjectBody: JSON.stringify(dataToSave, null, 2)
+        };
+        await client.putObject(putObjectRequest);
+        console.log('✅ הנתונים נשמרו ב-Object Storage');
     } catch (error) {
-        console.error('Error saving game data:', error);
+        console.error('שגיאה בשמירה לענן:', error);
     }
 }
 
@@ -43,15 +65,40 @@ function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
+function checkWinner(room) {
+    const winPatterns = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],
+        [0, 4, 8], [2, 4, 6]
+    ];
+    for (let pattern of winPatterns) {
+        const [a, b, c] = pattern;
+        if (room.board[a] && room.board[a] === room.board[b] && room.board[a] === room.board[c]) {
+            room.winner = room.board[a];
+            room.gameActive = false;
+        }
+    }
+    if (!room.board.includes(null) && !room.winner) {
+        room.winner = 'Draw';
+        room.gameActive = false;
+    }
+}
+
+// --- נתיבי שרת (API Routes) ---
+
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../Frontend/index.html'));
+    res.sendFile(path.join(__dirname, 'Frontend/index.html'));
 });
 
-// === יצירת חדר ===
-app.post('/create-room', (req, res) => {
-    console.log("1");
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
+app.post('/create-room', async (req, res) => {
+    activeRooms = await loadGameData(); // סנכרון מהענן
     const { roomName, creatorName } = req.body;
     const roomCode = generateRoomCode();
+    
     activeRooms[roomCode] = {
         name: roomName,
         players: [creatorName],
@@ -61,19 +108,20 @@ app.post('/create-room', (req, res) => {
         winner: null,
         lastActive: new Date()
     };
-    saveGameData(); // <--- שמירה!
+    
+    await saveGameData(activeRooms); // שמירה לענן
     console.log(`Room created: ${roomCode} by ${creatorName}`);
     res.json({ success: true, roomCode: roomCode });
 });
 
-// === הצטרפות לחדר ===
-app.post('/join-room', (req, res) => {
+app.post('/join-room', async (req, res) => {
+    activeRooms = await loadGameData(); // סנכרון מהענן
     const { roomCode, playerName } = req.body;
 
     if (activeRooms[roomCode]) {
         if (!activeRooms[roomCode].players.includes(playerName)) {
             activeRooms[roomCode].players.push(playerName);
-            saveGameData(); // <--- שמירה!
+            await saveGameData(activeRooms);
         }
         res.json({ success: true, roomName: activeRooms[roomCode].name });
     } else {
@@ -81,8 +129,8 @@ app.post('/join-room', (req, res) => {
     }
 });
 
-// === התחלת משחק ===
-app.post('/start-game', (req, res) => {
+app.post('/start-game', async (req, res) => {
+    activeRooms = await loadGameData();
     const { roomCode } = req.body;
     if (activeRooms[roomCode]) {
         activeRooms[roomCode].gameActive = true;
@@ -90,16 +138,15 @@ app.post('/start-game', (req, res) => {
         activeRooms[roomCode].winner = null;
         activeRooms[roomCode].turnIndex = 0;
         
-        saveGameData(); // <--- שמירה!
-        console.log(`Game started in room ${roomCode}`);
+        await saveGameData(activeRooms);
         res.json({ success: true });
     } else {
         res.json({ success: false });
     }
 });
 
-// === איפוס משחק ===
-app.post('/reset-game', (req, res) => {
+app.post('/reset-game', async (req, res) => {
+    activeRooms = await loadGameData();
     const { roomCode } = req.body;
     if (activeRooms[roomCode]) {
         activeRooms[roomCode].gameActive = true;
@@ -107,16 +154,15 @@ app.post('/reset-game', (req, res) => {
         activeRooms[roomCode].winner = null;
         activeRooms[roomCode].turnIndex = 0;
         
-        saveGameData(); // <--- שמירה!
-        console.log(`Game reset in room ${roomCode}`);
+        await saveGameData(activeRooms);
         res.json({ success: true });
     } else {
         res.json({ success: false, message: "Room not found" });
     }
 });
 
-// === ביצוע מהלך ===
-app.post('/make-move', (req, res) => {
+app.post('/make-move', async (req, res) => {
+    activeRooms = await loadGameData();
     const { roomCode, index, playerIndex } = req.body;
     const room = activeRooms[roomCode];
 
@@ -126,8 +172,7 @@ app.post('/make-move', (req, res) => {
             room.turnIndex = (room.turnIndex === 0) ? 1 : 0;
             checkWinner(room);
             
-            saveGameData(); // <--- שמירה! (חשוב מאוד אחרי כל מהלך)
-            
+            await saveGameData(activeRooms);
             res.json({ success: true });
         } else {
             res.json({ success: false, message: "Not your turn or invalid move" });
@@ -137,7 +182,8 @@ app.post('/make-move', (req, res) => {
     }
 });
 
-app.get('/room-status', (req, res) => {
+app.get('/room-status', async (req, res) => {
+    activeRooms = await loadGameData(); // תמיד להביא מצב עדכני לשחקן
     const roomCode = req.query.code;
 
     if (activeRooms[roomCode]) {
@@ -154,28 +200,14 @@ app.get('/room-status', (req, res) => {
     }
 });
 
-function checkWinner(room) {
-    const winPatterns = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8],
-        [0, 3, 6], [1, 4, 7], [2, 5, 8],
-        [0, 4, 8], [2, 4, 6]
-    ];
-
-    for (let pattern of winPatterns) {
-        const [a, b, c] = pattern;
-        if (room.board[a] && room.board[a] === room.board[b] && room.board[a] === room.board[c]) {
-            room.winner = room.board[a];
-            room.gameActive = false;
-        }
-    }
+// הפעלת השרת
+async function startServer() {
+    activeRooms = await loadGameData(); // טעינה ראשונית
     
-    if (!room.board.includes(null) && !room.winner) {
-        room.winner = 'Draw';
-        room.gameActive = false;
-    }
+    const PORT = process.env.PORT || 80; 
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+    });
 }
 
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+startServer();
