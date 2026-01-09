@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>חדר משחק</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* עיצוב ספציפי ללובי */
+      body {
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        /* הוספתי רקע כהה שיתאים ל-index.html */
+        background: linear-gradient(135deg, #1a1c2c 0%, #4a192c 100%);
+        margin: 0;
+      }
+
+      .lobby-container {
+        text-align: center;
+        color: #333;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 40px;
+        border-radius: 20px;
+        width: 100%;
+        max-width: 600px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        /* מאפשר גלילה אם התוכן ארוך מדי */
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      .room-info {
+        background: #6c5ce7;
+        color: white;
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 25px;
+        display: inline-block;
+        box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+      }
+
+      .players-list {
+        list-style: none;
+        padding: 0;
+        margin-top: 20px;
+        margin-bottom: 30px;
+        text-align: right;
+      }
+
+      .players-list li {
+        background: #f1f2f6;
+        margin: 10px 0;
+        padding: 15px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-right: 4px solid #6c5ce7;
+        font-weight: 500;
+      }
+
+      .status {
+        color: #00b894;
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+
+      h3 {
+        color: #2d3436;
+        margin-bottom: 10px;
+      }
+
+      p {
+        color: #636e72;
+      }
+
+      /* הוספתי את ה-btn כדי שייראה טוב גם פה */
+      .btn {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        cursor: pointer;
+        font-family: "Rubik", sans-serif;
+        transition: background-color 0.3s;
+        margin-top: 10px;
+      }
+
+      .btn-primary {
+        background-color: #6c5ce7;
+        color: white;
+      }
+      .btn-primary:hover {
+        background-color: #5b4cc4;
+      }
+
+      .btn-secondary {
+        background-color: #fab1a0;
+        color: #2d3436;
+      }
+      .btn-secondary:hover {
+        background-color: #e17055;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="lobby-container">
+      <h1>הלובי 🎮</h1>
+
+      <div class="room-info">
+        <h2>קוד חדר: <span id="display-room-code">...</span></h2>
+      </div>
+
+      <h3>
+        שלום, <span id="display-username" style="color: #d63031">...</span>
+      </h3>
+      <p>ממתין לשחקנים נוספים שיצטרפו...</p>
+
+      <ul class="players-list" id="players-list">
+        <li>טוען רשימת שחקנים...</li>
+      </ul>
+
+      <button id="start-game-btn" class="btn btn-primary" style="display: none">
+        התחל משחק 🚀
+      </button>
+
+      <div id="game-container" style="display: none">
+        <h2 id="game-status">המשחק התחיל!</h2>
+        <div class="tic-tac-toe-board">
+          <div class="cell" onclick="makeMove(0)"></div>
+          <div class="cell" onclick="makeMove(1)"></div>
+          <div class="cell" onclick="makeMove(2)"></div>
+          <div class="cell" onclick="makeMove(3)"></div>
+          <div class="cell" onclick="makeMove(4)"></div>
+          <div class="cell" onclick="makeMove(5)"></div>
+          <div class="cell" onclick="makeMove(6)"></div>
+          <div class="cell" onclick="makeMove(7)"></div>
+          <div class="cell" onclick="makeMove(8)"></div>
+        </div>
+      </div>
+      <button
+        id="reset-btn"
+        class="btn btn-primary"
+        style="display: none; background-color: #0984e3; margin-top: 20px"
+      >
+        משחק חוזר 🔄
+      </button>
+
+      <button class="btn btn-secondary" onclick="leaveRoom()">
+        יציאה מהחדר
+      </button>
+    </div>
+
+    <script src="game.js"></script>
+
+    <script>
+      function leaveRoom() {
+        if (confirm("האם אתה בטוח שברצונך לצאת?")) {
+          window.location.href = "index.html";
+        }
+      }
+    </script>
+  </body>
+</html>

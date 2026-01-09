@@ -1,0 +1,45 @@
+{
+  "6725": {
+    "name": "dawda",
+    "players": [
+      "thelopen"
+    ],
+    "gameActive": false,
+    "board": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "turnIndex": 0,
+    "winner": null,
+    "lastActive": "2026-01-09T11:30:15.446Z"
+  },
+  "8085": {
+    "name": "החדר של ליאור",
+    "players": [
+      "נמר_עצבני",
+      "פיצה_בלי_זיתים"
+    ],
+    "gameActive": false,
+    "board": [
+      "X",
+      "O",
+      null,
+      "X",
+      "O",
+      null,
+      "X",
+      null,
+      null
+    ],
+    "turnIndex": 1,
+    "winner": "X",
+    "lastActive": "2026-01-07T17:52:05.382Z"
+  }
+}

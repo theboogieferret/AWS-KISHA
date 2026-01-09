@@ -1,0 +1,200 @@
+/* איפוס הגדרות ברירת מחדל */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Rubik', sans-serif;
+    background: linear-gradient(135deg, #1a1c2c 0%, #4a192c 100%); /* רקע גרדיאנט כהה */
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+    padding: 20px;
+}
+
+/* הקופסה הראשית במרכז המסך */
+.main-container {
+    background-color: rgba(255, 255, 255, 0.95);
+    color: #333;
+    width: 100%;
+    max-width: 800px;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+header p {
+    color: #666;
+    margin-bottom: 30px;
+}
+
+/* אזור שם המשתמש */
+.player-setup {
+    max-width: 400px;
+    margin: 0 auto 30px auto;
+    text-align: right;
+}
+
+.player-setup label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #444;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+}
+
+/* עיצוב שדות קלט כללי */
+input[type="text"] {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: 'Rubik', sans-serif;
+    transition: border-color 0.3s;
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: #6c5ce7;
+}
+
+/* כפתור הקוביה הרנדומלית */
+#random-btn {
+    background-color: #ffeaa7;
+    border: 2px solid #fdcb6e;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.5rem;
+    padding: 0 15px;
+    transition: transform 0.2s;
+}
+
+#random-btn:hover {
+    transform: rotate(20deg);
+}
+
+.separator {
+    height: 1px;
+    background-color: #eee;
+    margin: 30px 0;
+}
+
+/* אזור הפעולות - יצירה והצטרפות */
+.game-actions {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap; /* מאפשר שבירת שורה במסכים קטנים */
+}
+
+.card {
+    flex: 1;
+    background-color: #f8f9fa;
+    padding: 25px;
+    border-radius: 15px;
+    border: 1px solid #eee;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.card h2 {
+    font-size: 1.4rem;
+    margin-bottom: 20px;
+    color: #2d3436;
+}
+
+.form-control {
+    margin-bottom: 20px;
+}
+
+/* כפתורים ראשיים */
+.btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: 'Rubik', sans-serif;
+    transition: background-color 0.3s;
+}
+
+.btn-primary {
+    background-color: #6c5ce7;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #5b4cc4;
+}
+
+.btn-secondary {
+    background-color: #00cec9;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #00b8b4;
+}
+
+/* התאמה למובייל */
+@media (max-width: 768px) {
+    .game-actions {
+        flex-direction: column;
+    }
+    
+    .main-container {
+        padding: 20px;
+    }
+}
+
+/* עיצוב הלוח */
+.tic-tac-toe-board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    max-width: 300px;
+    margin: 20px auto;
+}
+
+.cell {
+    background: #fff;
+    height: 80px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 2.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: background 0.2s;
+}
+
+.cell:hover {
+    background: #dfe6e9;
+}

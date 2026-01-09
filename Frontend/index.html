@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Room Hub</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="main-container">
+        
+        <header>
+            <h1>ברוכים הבאים לזירה 🎮</h1>
+            <p>התחילו לשחק עם חברים ברגע</p>
+        </header>
+
+        <div class="player-setup">
+            <label for="username">שם השחקן שלך</label>
+            <div class="input-group">
+                <input type="text" id="username" placeholder="הכנס כינוי...">
+                <button id="random-btn" title="שם רנדומלי">🎲</button>
+            </div>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="game-actions">
+            
+            <div class="card create-room">
+                <h2>יצירת חדר חדש</h2>
+                <div class="form-control">
+                    <input type="text" id="room-name" placeholder="שם החדר (למשל: החדר של דני)">
+                </div>
+                <button class="btn btn-primary">צור חדר והתחל</button>
+            </div>
+
+            <div class="card join-room">
+                <h2>הצטרפות לחדר קיים</h2>
+                <div class="form-control">
+                    <input type="text" id="room-code" placeholder="הכנס קוד חדר (#1234)">
+                </div>
+                <button class="btn btn-secondary">הצטרף למשחק</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="client.js"></script>
+
+</body>
+</html>
