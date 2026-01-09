@@ -19,7 +19,7 @@ const provider = new common.InstancePrincipalsAuthenticationDetailsProvider();
 const client = new os.ObjectStorageClient({ authenticationDetailsProvider: provider });
 
 const bucketName = "frontend-bucket-game"; 
-const namespaceName = "YOUR_NAMESPACE"; // חובה להחליף ב-Namespace שלך מה-OCI Console
+const namespaceName = "axlbzs2kkeq0"; // חובה להחליף ב-Namespace שלך מה-OCI Console
 const objectName = "gameData.json";
 
 // משתנה גלובלי לחדרים
