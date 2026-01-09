@@ -15,7 +15,10 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, 'Frontend')));
 
 // הגדרת OCI Object Storage
-const provider = new common.InstancePrincipalsAuthenticationDetailsProvider();
+// התיקון כאן: הגישה ל-Provider צריכה להיות דרך common
+const provider = new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
+
+// כעת ניתן להשתמש ב-provider כדי ליצור את ה-client
 const client = new os.ObjectStorageClient({ authenticationDetailsProvider: provider });
 
 const bucketName = "frontend-bucket-game"; 
