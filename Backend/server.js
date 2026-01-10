@@ -15,24 +15,30 @@ oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 let pool;
 
 // משיכת סיסמה מה־Vault
+// משיכת סיסמה מה־Vault
 async function getDbPassword() {
-  const provider =
-    new common.InstancePrincipalsAuthenticationDetailsProvider();
+  try {
+    // 1. יצירת ה-Provider באמצעות ה-Builder החדש (חובה להשתמש ב-await וב-build())
+    const provider = await new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
 
-  const client = new secrets.SecretsClient({
-    authenticationDetailsProvider: provider,
-  });
+    const client = new secrets.SecretsClient({
+      authenticationDetailsProvider: provider,
+    });
 
-  const secret = await client.getSecretBundle({
-    secretId: process.env.DB_SECRET_OCID,
-  });
+    // 2. שליפת הסוד מה-Vault
+    const response = await client.getSecretBundle({
+      secretId: process.env.DB_SECRET_OCID,
+    });
 
-  return Buffer.from(
-    secret.secretBundleContent.content,
-    "base64"
-  ).toString("utf8");
+    // 3. תיקון נתיב הגישה לתוכן (Response structure update)
+    const base64Content = response.secretBundle.secretBundleContent.content;
+    
+    return Buffer.from(base64Content, "base64").toString("utf8");
+  } catch (error) {
+    console.error("❌ Failed to fetch secret from Vault:", error);
+    throw error;
+  }
 }
-
 // יצירת Connection Pool
 async function initDb() {
   const password = await getDbPassword();
