@@ -43,10 +43,14 @@ async function getDbPassword() {
 async function initDb() {
   const password = await getDbPassword();
 
+  // --- הוספה חשובה: הגדרת נתיב ה-Wallet ---
+  // וודא שקבצי ה-Wallet (כמו cwallet.sso) נמצאים בתיקייה הזו בשרת
+  oracledb.initOracleClient({ configDir: "/app/wallet" }); 
+
   pool = await oracledb.createPool({
     user: "ADMIN",
-    password,
-    connectString: process.env.DB_CONNECT_STRING,
+    password: password,
+    connectString: process.env.DB_CONNECT_STRING, // הערך gamedb_high שהזרקת ב-Terraform
   });
 
   console.log("✅ Database pool created");
