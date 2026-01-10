@@ -1,207 +1,245 @@
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const fs = require('fs');
+const express = require("express");
+const oracledb = require("oracledb");
+const common = require("oci-common");
+const secrets = require("oci-secrets");
 
-const os = require('oci-objectstorage');
-const common = require('oci-common');
-
-const app = express(); 
-
+const app = express();
 app.use(express.json());
-app.use(cors());
 
-// הגדרת סטטיק - וודא שתיקיית ה-Frontend קיימת בתוך Backend או בנתיב הנכון
-app.use(express.static(path.join(__dirname, 'Frontend')));
+oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 
-const bucketName = "frontend-bucket-game"; 
-const namespaceName = "axlbzs2kkeq0"; 
-const objectName = "gameData.json";
+// =====================
+// OCI + DATABASE SETUP
+// =====================
 
-// משתנים גלובליים שיאותחלו בתוך startServer
-let client; 
-let activeRooms = {}; 
+let pool;
 
-// --- פונקציות עזר לענן ---
+// משיכת סיסמה מה־Vault
+async function getDbPassword() {
+  const provider =
+    new common.InstancePrincipalsAuthenticationDetailsProvider();
 
-async function loadGameData() {
-    try {
-        const getObjectRequest = {
-            objectName: objectName,
-            bucketName: bucketName,
-            namespaceName: namespaceName
-        };
-        const response = await client.getObject(getObjectRequest);
-        const chunks = [];
-        for await (let chunk of response.value) {
-            chunks.push(chunk);
-        }
-        return JSON.parse(Buffer.concat(chunks).toString());
-    } catch (error) {
-        console.log("קובץ לא נמצא או שגיאה בטעינה, מחזיר אובייקט ריק");
-        return {};
-    }
+  const client = new secrets.SecretsClient({
+    authenticationDetailsProvider: provider,
+  });
+
+  const secret = await client.getSecretBundle({
+    secretId: process.env.DB_SECRET_OCID,
+  });
+
+  return Buffer.from(
+    secret.secretBundleContent.content,
+    "base64"
+  ).toString("utf8");
 }
 
-async function saveGameData(dataToSave) {
-    try {
-        const putObjectRequest = {
-            namespaceName: namespaceName,
-            bucketName: bucketName,
-            objectName: objectName,
-            putObjectBody: JSON.stringify(dataToSave, null, 2)
-        };
-        await client.putObject(putObjectRequest);
-        console.log('✅ הנתונים נשמרו ב-Object Storage');
-    } catch (error) {
-        console.error('שגיאה בשמירה לענן:', error);
-    }
+// יצירת Connection Pool
+async function initDb() {
+  const password = await getDbPassword();
+
+  pool = await oracledb.createPool({
+    user: "ADMIN",
+    password,
+    connectString: process.env.DB_CONNECT_STRING,
+  });
+
+  console.log("✅ Database pool created");
 }
+
+// =====================
+// UTILITIES
+// =====================
 
 function generateRoomCode() {
-    return Math.floor(1000 + Math.random() * 9000).toString();
+  return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-function checkWinner(room) {
-    const winPatterns = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8],
-        [0, 3, 6], [1, 4, 7], [2, 5, 8],
-        [0, 4, 8], [2, 4, 6]
-    ];
-    for (let pattern of winPatterns) {
-        const [a, b, c] = pattern;
-        if (room.board[a] && room.board[a] === room.board[b] && room.board[a] === room.board[c]) {
-            room.winner = room.board[a];
-            room.gameActive = false;
-        }
-    }
-    if (!room.board.includes(null) && !room.winner) {
-        room.winner = 'Draw';
-        room.gameActive = false;
-    }
+async function withConnection(fn) {
+  const conn = await pool.getConnection();
+  try {
+    return await fn(conn);
+  } finally {
+    await conn.close();
+  }
 }
 
-// --- נתיבי שרת (API Routes) ---
+// =====================
+// ROUTES
+// =====================
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'Frontend/index.html'));
+app.get("/health", (_, res) => {
+  res.status(200).send("OK");
 });
 
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
+// ---------- CREATE ROOM ----------
+app.post("/create-room", async (req, res) => {
+  const { roomName, creatorName } = req.body;
+  const roomCode = generateRoomCode();
+
+  await withConnection(async (conn) => {
+    await conn.execute(
+      `INSERT INTO rooms (room_code, room_name, game_active, turn_index, winner)
+       VALUES (:c, :n, 0, 0, NULL)`,
+      { c: roomCode, n: roomName }
+    );
+
+    await conn.execute(
+      `INSERT INTO players (room_code, player_name, player_index)
+       VALUES (:c, :p, 0)`,
+      { c: roomCode, p: creatorName }
+    );
+
+    await conn.commit();
+  });
+
+  res.json({ success: true, roomCode });
 });
 
-app.post('/create-room', async (req, res) => {
-    activeRooms = await loadGameData();
-    const { roomName, creatorName } = req.body;
-    const roomCode = generateRoomCode();
-    
-    activeRooms[roomCode] = {
-        name: roomName,
-        players: [creatorName],
-        gameActive: false,
-        board: Array(9).fill(null),
-        turnIndex: 0,
-        winner: null,
-        lastActive: new Date()
+// ---------- JOIN ROOM ----------
+app.post("/join-room", async (req, res) => {
+  const { roomCode, playerName } = req.body;
+
+  const result = await withConnection(async (conn) => {
+    const count = await conn.execute(
+      `SELECT COUNT(*) AS CNT FROM players WHERE room_code = :c`,
+      { c: roomCode }
+    );
+
+    if (count.rows[0].CNT >= 2) return false;
+
+    await conn.execute(
+      `INSERT INTO players (room_code, player_name, player_index)
+       VALUES (:c, :p, 1)`,
+      { c: roomCode, p: playerName }
+    );
+
+    await conn.commit();
+    return true;
+  });
+
+  res.json({ success: result });
+});
+
+// ---------- START GAME ----------
+app.post("/start-game", async (req, res) => {
+  const { roomCode } = req.body;
+
+  await withConnection(async (conn) => {
+    await conn.execute(
+      `UPDATE rooms
+       SET game_active = 1, turn_index = 0, winner = NULL
+       WHERE room_code = :c`,
+      { c: roomCode }
+    );
+
+    await conn.execute(
+      `DELETE FROM board WHERE room_code = :c`,
+      { c: roomCode }
+    );
+
+    await conn.commit();
+  });
+
+  res.json({ success: true });
+});
+
+// ---------- MAKE MOVE ----------
+app.post("/make-move", async (req, res) => {
+  const { roomCode, index, playerIndex } = req.body;
+
+  const success = await withConnection(async (conn) => {
+    const room = await conn.execute(
+      `SELECT turn_index, game_active FROM rooms WHERE room_code = :c FOR UPDATE`,
+      { c: roomCode }
+    );
+
+    if (room.rows.length === 0) return false;
+    if (room.rows[0].GAME_ACTIVE === 0) return false;
+    if (room.rows[0].TURN_INDEX !== playerIndex) return false;
+
+    const exists = await conn.execute(
+      `SELECT 1 FROM board WHERE room_code = :c AND cell_index = :i`,
+      { c: roomCode, i: index }
+    );
+
+    if (exists.rows.length > 0) return false;
+
+    const value = playerIndex === 0 ? "X" : "O";
+
+    await conn.execute(
+      `INSERT INTO board (room_code, cell_index, value)
+       VALUES (:c, :i, :v)`,
+      { c: roomCode, i: index, v: value }
+    );
+
+    await conn.execute(
+      `UPDATE rooms
+       SET turn_index = :t
+       WHERE room_code = :c`,
+      { t: playerIndex === 0 ? 1 : 0, c: roomCode }
+    );
+
+    await conn.commit();
+    return true;
+  });
+
+  res.json({ success });
+});
+
+// ---------- ROOM STATUS ----------
+app.get("/room-status", async (req, res) => {
+  const roomCode = req.query.code;
+
+  const data = await withConnection(async (conn) => {
+    const room = await conn.execute(
+      `SELECT * FROM rooms WHERE room_code = :c`,
+      { c: roomCode }
+    );
+
+    if (room.rows.length === 0) return null;
+
+    const players = await conn.execute(
+      `SELECT player_name FROM players
+       WHERE room_code = :c ORDER BY player_index`,
+      { c: roomCode }
+    );
+
+    const board = await conn.execute(
+      `SELECT cell_index, value FROM board WHERE room_code = :c`,
+      { c: roomCode }
+    );
+
+    const boardArr = Array(9).fill(null);
+    board.rows.forEach((r) => (boardArr[r.CELL_INDEX] = r.VALUE));
+
+    return {
+      players: players.rows.map((p) => p.PLAYER_NAME),
+      gameActive: room.rows[0].GAME_ACTIVE === 1,
+      turnIndex: room.rows[0].TURN_INDEX,
+      winner: room.rows[0].WINNER,
+      board: boardArr,
     };
-    
-    await saveGameData(activeRooms);
-    res.json({ success: true, roomCode: roomCode });
+  });
+
+  if (!data) {
+    res.json({ success: false });
+  } else {
+    res.json({ success: true, ...data });
+  }
 });
 
-app.post('/join-room', async (req, res) => {
-    activeRooms = await loadGameData();
-    const { roomCode, playerName } = req.body;
+// =====================
+// START SERVER
+// =====================
 
-    if (activeRooms[roomCode]) {
-        if (!activeRooms[roomCode].players.includes(playerName)) {
-            activeRooms[roomCode].players.push(playerName);
-            await saveGameData(activeRooms);
-        }
-        res.json({ success: true, roomName: activeRooms[roomCode].name });
-    } else {
-        res.json({ success: false, message: "החדר לא נמצא" });
-    }
-});
-
-app.post('/start-game', async (req, res) => {
-    activeRooms = await loadGameData();
-    const { roomCode } = req.body;
-    if (activeRooms[roomCode]) {
-        activeRooms[roomCode].gameActive = true;
-        activeRooms[roomCode].board = Array(9).fill(null);
-        activeRooms[roomCode].winner = null;
-        activeRooms[roomCode].turnIndex = 0;
-        await saveGameData(activeRooms);
-        res.json({ success: true });
-    } else {
-        res.json({ success: false });
-    }
-});
-
-app.post('/make-move', async (req, res) => {
-    activeRooms = await loadGameData();
-    const { roomCode, index, playerIndex } = req.body;
-    const room = activeRooms[roomCode];
-
-    if (room && room.gameActive && !room.winner) {
-        if (room.turnIndex === playerIndex && room.board[index] === null) {
-            room.board[index] = playerIndex === 0 ? 'X' : 'O';
-            room.turnIndex = (room.turnIndex === 0) ? 1 : 0;
-            checkWinner(room);
-            await saveGameData(activeRooms);
-            res.json({ success: true });
-        } else {
-            res.json({ success: false, message: "Not your turn or invalid move" });
-        }
-    } else {
-        res.json({ success: false });
-    }
-});
-
-app.get('/room-status', async (req, res) => {
-    activeRooms = await loadGameData();
-    const roomCode = req.query.code;
-    if (activeRooms[roomCode]) {
-        res.json({ 
-            success: true, 
-            players: activeRooms[roomCode].players,
-            gameActive: activeRooms[roomCode].gameActive,
-            board: activeRooms[roomCode].board,
-            turnIndex: activeRooms[roomCode].turnIndex,
-            winner: activeRooms[roomCode].winner
-        });
-    } else {
-        res.json({ success: false, message: "Room closed" });
-    }
-});
-
-// --- הפעלת השרת ---
-
-async function startServer() {
-    try {
-        console.log("Connecting to OCI Object Storage...");
-        
-        // יצירת ה-Provider בצורה אסינכרונית
-        const provider = await new common.InstancePrincipalsAuthenticationDetailsProviderBuilder().build();
-
-        // אתחול ה-Client הגלובלי
-        client = new os.ObjectStorageClient({ 
-            authenticationDetailsProvider: provider 
-        });
-
-        console.log("✅ OCI Client initialized successfully");
-
-        const PORT = 80;
-        app.listen(PORT, () => {
-            console.log(`🚀 Server running at http://localhost:${PORT}`);
-        });
-
-    } catch (error) {
-        console.error("❌ Failed to initialize OCI Client:", error);
-        process.exit(1); // סגירת השרת אם אין חיבור לענן
-    }
-}
-
-startServer();
+(async () => {
+  try {
+    await initDb();
+    app.listen(80, () =>
+      console.log("🚀 Server running on port 80")
+    );
+  } catch (err) {
+    console.error("❌ Startup failed:", err);
+    process.exit(1);
+  }
+})();
